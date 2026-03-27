@@ -136,7 +136,7 @@
         const username = loginUser.value;
         const password = loginPass.value;
       
-        const res = await fetch("http://sexard3-214.tolna.net:9701/api/login", {
+        const res = await fetch("http://sexard3-214.tolna.net:9031/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, password })
@@ -182,7 +182,7 @@
       /* ================== ADATOK BETÖLTÉSE ================== */
       
       async function loadItems(){
-        const res = await fetch("http://sexard3-214.tolna.net:9701/api/items", {
+        const res = await fetch("http://sexard3-214.tolna.net:9031/api/items", {
           headers: {
             "Authorization": authToken
           }
@@ -262,7 +262,7 @@
           tr.innerHTML = `
             <td>
               <div class="item-cell">
-                <img src="http://sexard3-214.tolna.net:9701/kepek/general.png"
+                <img src="http://sexard3-214.tolna.net:9031/kepek/general.png"
                      onclick="openImage('general.png')">
                 <span>${i.nev}</span>
               </div>
@@ -287,7 +287,7 @@
       }     
 
       function openImage(filename){
-        modalImage.src = `http://sexard3-214.tolna.net:9701/kepek/${filename}`;
+        modalImage.src = `http://sexard3-214.tolna.net:9031/kepek/${filename}`;
         imageModal.style.display = "block";
       }
 
@@ -312,7 +312,7 @@
 //  HIBABEJELENTÉS
       async function reportIssue(id){
 
-        await fetch(`http://sexard3-214.tolna.net:9701/api/items/${id}/report`,{
+        await fetch(`http://sexard3-214.tolna.net:9031/api/items/${id}/report`,{
           method: "PUT",
           headers: {
             "Authorization": authToken
@@ -339,9 +339,9 @@
         let url;
 
         if (currentUser.role === "admin") {
-          url = "http://sexard3-214.tolna.net:9701/api/all-borrowed";
+          url = "http://sexard3-214.tolna.net:9031/api/all-borrowed";
         } else {
-          url = "http://sexard3-214.tolna.net:9701/api/my-borrowed";
+          url = "http://sexard3-214.tolna.net:9031/api/my-borrowed";
         }
 
         const res = await fetch(url, {
@@ -363,7 +363,7 @@
 
             html += `
               <div class="borrowed-item" id="item-${i.id}">
-                <img src="http://sexard3-214.tolna.net:9701/kepek/general.png"
+                <img src="http://sexard3-214.tolna.net:9031/kepek/general.png"
                      onclick="openImage('general.png')">
                 <div class="borrowed-item">
                   <strong>${i.nev}</strong><br>
@@ -389,7 +389,7 @@
 
       async function borrowItem(id){
 
-      await fetch(`http://sexard3-214.tolna.net:9701/api/items/${id}/borrow`,{
+      await fetch(`http://sexard3-214.tolna.net:9031/api/items/${id}/borrow`,{
         method: "PUT",
         headers: {
           "Authorization": authToken
@@ -403,7 +403,7 @@
 //  SAJÁT KÖLCSÖNZÉS
       async function loadMyBorrowed() {
 
-        const res = await fetch("http://sexard3-214.tolna.net:9701/api/my-borrowed", {
+        const res = await fetch("http://sexard3-214.tolna.net:9031/api/my-borrowed", {
           headers: { Authorization: authToken }
         });
 
@@ -432,7 +432,7 @@
 //  ÖSSZES KÖLCSÖNZÉS
       async function loadAllBorrowed() {
         
-        const res = await fetch("http://sexard3-214.tolna.net:9701/api/all-borrowed", {
+        const res = await fetch("http://sexard3-214.tolna.net:9031/api/all-borrowed", {
           headers: { Authorization: authToken }
         });
 
@@ -478,7 +478,7 @@
               
         const element = document.getElementById(`item-${id}`);
               
-        await fetch(`http://sexard3-214.tolna.net:9701/api/items/${id}/return`, {
+        await fetch(`http://sexard3-214.tolna.net:9031/api/items/${id}/return`, {
           method: "PUT",
           headers: {
             Authorization: authToken
@@ -563,7 +563,7 @@
           return;
         }
       
-        await fetch("http://sexard3-214.tolna.net:9701/api/items", {
+        await fetch("http://sexard3-214.tolna.net:9031/api/items", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -624,7 +624,7 @@
           return;
         }
       
-        const res = await fetch(`http://sexard3-214.tolna.net:9701/api/items/${editingId}`, {
+        const res = await fetch(`http://sexard3-214.tolna.net:9031/api/items/${editingId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -652,7 +652,7 @@
       /* ================== TÖRLÉS ================== */
       
       async function deleteItem(id){
-        await fetch(`http://sexard3-214.tolna.net:9701/api/items/${id}`,{
+        await fetch(`http://sexard3-214.tolna.net:9031/api/items/${id}`,{
           method:'DELETE',
           headers: {
             "Authorization": authToken
