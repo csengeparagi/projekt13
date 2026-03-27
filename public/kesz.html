@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="kesz.css"> 
+
+  
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Leltár rendszer</title>
+</head>
+<body>
+  <div id="loginModal" class="modal" style="display:flex;">
+    <div class="modal-content">
+      <h3>Bejelentkezés</h3>
+      <input id="loginUser" placeholder="Felhasználónév">
+      <input id="loginPass" type="password" placeholder="Jelszó">
+      <button id="loginBtn">Belépés</button>
+    </div>
+  </div>
+
+  <!-- KÉP MODAL -->
+<div id="imageModal" class="img-modal">
+  <span id="closeImageModal">&times;</span>
+  <img id="modalImage">
+</div>
+
+    <h2>Leltár rendszer</h2>
+    
+    <div class="container">
+    
+      <div class="toolbar">
+        <input id="q" placeholder="Keresés...">
+        <button id="searchBtn">Keres</button>
+        <button id="addItemBtn">Új tétel</button>
+        <button id="exportCsvBtn">CSV export</button>
+        <span id="adminBadge" class="badge" style="display:none; cursor:pointer;">0</span>
+        <button onclick="loadBorrowed()">Kölcsönzések</button>
+        <button id="logoutBtn">Kijelentkezés</button>
+      </div>
+      <div id="stats"></div>
+      <table>
+        <thead>
+          <tr>
+            <th>Név</th>
+            <th>Beszerzés éve</th>
+            <th>Beszerzési forrás</th>
+            <th>Hely</th>
+            <th>Kategória</th>
+            <th onclick="sortByQty()">Mennyiség </th>
+            <th>Művelet</th>
+          </tr>
+        </thead>
+        <tbody id="results"></tbody>
+      </table>
+      <div id="borrowedView" style="display:none;"></div>
+    
+      <div class="form-panel" id="editPanel">
+        <h3>Szerkesztés</h3>
+        <div class="form-grid">
+          <input id="editName" placeholder="Név">
+          <input id="editCategory" placeholder="Kategória">
+          <input id="editQty" type="number" placeholder="Mennyiség">
+        </div>
+        <br>
+        <button id="saveItemBtn">Mentés</button>
+      </div>
+    
+    </div>
+
+        <!-- ÚJ TÉTEL MODAL -->
+    <div id="addModal" class="modal">
+      <div class="modal-content">
+        <h3>Új tétel</h3>
+      
+        <input id="newName" placeholder="Eszköz neve">
+        <input id="newCategory" placeholder="Kategória (pl. IT)">
+        <input id="newQty" type="number" min="1" placeholder="Mennyiség" value="1">
+
+      
+        <div class="modal-actions">
+          <button id="createItemBtn">Mentés</button>
+          <button id="cancelModalBtn">Mégse</button>
+        </div>
+      </div>
+    </div>  
+
+    <script>
+
+      /* ================== VÁLTOZÓK ================== */
+      
+      let currentUser = null;
+      let authToken = null;
+      let items = [];
+      let editingId = null;
+      let showOnlyErrors = false;
+      
+      const loginModal = document.getElementById("loginModal");
+      const loginBtn = document.getElementById("loginBtn");
+      const loginUser = document.getElementById("loginUser");
+      const loginPass = document.getElementById("loginPass");
+
+      const logoutBtn = document.getElementById("logoutBtn");
+
+      const adminBadge = document.getElementById("adminBadge");
+
+      const imageModal = document.getElementById("imageModal");
+      const modalImage = document.getElementById("modalImage");
+      const closeImageModal = document.getElementById("closeImageModal");
+      
+      const results = document.getElementById("results");
+      const q = document.getElementById("q");
+      const stats = document.getElementById("stats");
+      
+      const searchBtn = document.getElementById("searchBtn");
+      const saveItemBtn = document.getElementById("saveItemBtn");
+      const exportCsvBtn = document.getElementById("exportCsvBtn");
+      const addItemBtn = document.getElementById("addItemBtn");
+      
+      const editName = document.getElementById("editName");
+      const editCategory = document.getElementById("editCategory");
+      const editQty = document.getElementById("editQty");
+      
+      const addModal = document.getElementById("addModal");
+      const createItemBtn = document.getElementById("createItemBtn");
+      const cancelModalBtn = document.getElementById("cancelModalBtn");
+      
+      const newName = document.getElementById("newName");
+      const newCategory = document.getElementById("newCategory");
+      const newQty = document.getElementById("newQty");
+      
+      
+      /* ================== LOGIN/OUT ================== */
+      
+      loginBtn.onclick = async function() {
+      
+        const username = loginUser.value;
+        const password = loginPass.value;
+      
+        const res = await fetch("http://sexard3-214.tolna.net:9701/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password })
+        });
+      
+        if (!res.ok) {
+          alert("Hibás bejelentkezés");
+          return;
+        }
+      
+        const data = await res.json();
+      
+        authToken = data.token;
+        currentUser = {
+          role: data.role,
+          username: loginUser.value
+        };
+
+        document.querySelector('button[onclick="loadBorrowed()"]').textContent =
+          currentUser.role === "admin"
+          ? "Összes kölcsönzés"
+          : "Kölcsönzéseim";
+      
+        loginModal.style.display = "none";
+      
+        await loadItems();
+        applyPermissions();
+      };
+
+
+
+      function logout() {
+        authToken = null;
+        currentUser = null;
+
+        results.innerHTML = "";   // táblázat ürítése
+        items = [];
+
+        loginModal.style.display = "flex";
+      }
+      
+      
+      /* ================== ADATOK BETÖLTÉSE ================== */
+      
+      async function loadItems(){
+        const res = await fetch("http://sexard3-214.tolna.net:9701/api/items", {
+          headers: {
+            "Authorization": authToken
+          }
+        });
+      
+        if(!res.ok){
+          alert("Nincs jogosultság vagy lejárt a munkamenet!");
+          return;
+        }
+
+        document.querySelector("table").style.display = "table";
+        document.getElementById("borrowedView").style.display = "none";
+        
+        items = await res.json();
+        renderResults(items);
+        updateAdminBadge();
+        updateStats();
+      }
+      
+// HIBÁK
+
+      adminBadge.onclick = function(){
+
+        showOnlyErrors = !showOnlyErrors;
+
+        if(showOnlyErrors){
+          const hibasLista = items.filter(i => i.hibas === "Y");
+          renderResults(hibasLista);
+          adminBadge.style.background = "#990000";
+        } else {
+          renderResults(items);
+          adminBadge.style.background = "red";
+        }
+      };
+
+
+      function updateAdminBadge(){
+
+        if(!currentUser || currentUser.role !== "admin"){
+          adminBadge.style.display = "none";
+          return;
+        }
+
+        const hibasCount = items.filter(i => i.hibas === "Y").length;
+
+        if(hibasCount > 0){
+          adminBadge.style.display = "inline-block";
+          adminBadge.textContent = hibasCount;
+        } else {
+          adminBadge.style.display = "none";
+        }
+      }
+      
+      /* ================== TÁBLA ================== */
+      
+      function renderResults(list){
+        results.innerHTML = '';
+
+        list.forEach(i => {
+        
+          let actions = '';
+        
+          if(currentUser && currentUser.role === "admin"){
+            actions = `
+              <button onclick="openEdit(${i.id})">Szerkeszt</button>
+              <button onclick="deleteItem(${i.id})">Törlés</button>
+            `;
+          } else {
+            actions = `
+              <button onclick="reportIssue(${i.id})">Hibabejelentés</button>
+              <button onclick="borrowItem(${i.id})">Kölcsönzés</button>
+            `;
+          }
+        
+          const tr = document.createElement('tr');
+        
+          tr.innerHTML = `
+            <td>
+              <div class="item-cell">
+                <img src="http://sexard3-214.tolna.net:9701/kepek/general.png"
+                     onclick="openImage('general.png')">
+                <span>${i.nev}</span>
+              </div>
+            </td>
+            <td>${i.leltari || '-'}</td>
+            <td>${i.gyari || '-'}</td>
+            <td>${i.hely || '-'}</td>
+            <td>${i.kategoria || '-'}</td>
+            <td>${i.mennyiseg ?? 0}</td>
+            <td>${actions}</td>
+          `;
+          
+          if(i.hibas === 'Y' && currentUser.role === "admin"){
+            tr.style.backgroundColor = "#ffcccc";
+          }
+        
+          results.appendChild(tr);
+        });
+      
+        updateStats();
+        updateAdminBadge();
+      }     
+
+      function openImage(filename){
+        modalImage.src = `http://sexard3-214.tolna.net:9701/kepek/${filename}`;
+        imageModal.style.display = "block";
+      }
+
+
+      closeImageModal.onclick = function(){
+        imageModal.style.display = "none";
+      };
+      
+      imageModal.onclick = function(e){
+        if(e.target === imageModal){
+          imageModal.style.display = "none";
+        }
+      };
+      
+      document.addEventListener("keydown", function(e){
+        if(e.key === "Escape"){
+          imageModal.style.display = "none";
+        }
+      });
+      
+
+//  HIBABEJELENTÉS
+      async function reportIssue(id){
+
+        await fetch(`http://sexard3-214.tolna.net:9701/api/items/${id}/report`,{
+          method: "PUT",
+          headers: {
+            "Authorization": authToken
+          }
+      });
+
+        loadItems();
+      }
+
+
+
+      function backToList() {
+        document.querySelector("table").style.display = "table";
+        document.getElementById("borrowedView").style.display = "none";
+
+        loadItems();
+    }
+      
+
+//  KÖLCSÖNZÉS
+
+      async function loadBorrowed() {
+
+        let url;
+
+        if (currentUser.role === "admin") {
+          url = "http://sexard3-214.tolna.net:9701/api/all-borrowed";
+        } else {
+          url = "http://sexard3-214.tolna.net:9701/api/my-borrowed";
+        }
+
+        const res = await fetch(url, {
+          headers: { Authorization: authToken }
+        });
+
+        const items = await res.json();
+
+        let html = `
+          <button onclick="backToList()">← Vissza a listához</button>
+          <h2>Kölcsönzések</h2>
+        `;
+
+        if (items.length === 0) {
+          html += "<p>Nincs kölcsönzés.</p>";
+        } else {
+        
+          items.forEach(i => {
+
+            html += `
+              <div class="borrowed-item" id="item-${i.id}">
+                <img src="http://sexard3-214.tolna.net:9701/kepek/general.png"
+                     onclick="openImage('general.png')">
+                <div class="borrowed-item">
+                  <strong>${i.nev}</strong><br>
+                  ${currentUser.role === "admin" ? `👤 ${i.kolcsonzo}<br>` : ""}
+                  📅 ${new Date(i.datum).toLocaleString()}
+                  <br>
+                  <button onclick="returnItem(${i.id})">
+                    Visszahozás
+                  </button>
+                </div>
+              
+              </div>
+            `;
+            
+            });
+        
+        }
+
+        document.querySelector("table").style.display = "none";
+        document.getElementById("borrowedView").style.display = "block";
+        document.getElementById("borrowedView").innerHTML = html;
+      }
+
+      async function borrowItem(id){
+
+      await fetch(`http://sexard3-214.tolna.net:9701/api/items/${id}/borrow`,{
+        method: "PUT",
+        headers: {
+          "Authorization": authToken
+        }
+      });
+
+      loadItems();
+      }
+
+
+//  SAJÁT KÖLCSÖNZÉS
+      async function loadMyBorrowed() {
+
+        const res = await fetch("http://sexard3-214.tolna.net:9701/api/my-borrowed", {
+          headers: { Authorization: authToken }
+        });
+
+        const items = await res.json();
+
+        let html = "<h2>Saját kölcsönzéseim</h2>";
+
+        if (items.length === 0) {
+          html += "<p>Nincs kölcsönzött tétel.</p>";
+        } else {
+          items.forEach(i => {
+            html += `
+              <div class="item">
+                <strong>${i.nev}</strong><br>
+                Kölcsönzés dátuma: ${new Date(i.datum).toLocaleString()}
+              </div>
+            `;
+          });
+        }
+
+        document.querySelector("table").style.display = "none";
+        document.getElementById("borrowedView").style.display = "block";
+        document.getElementById("borrowedView").innerHTML = html;
+      }
+      
+//  ÖSSZES KÖLCSÖNZÉS
+      async function loadAllBorrowed() {
+        
+        const res = await fetch("http://sexard3-214.tolna.net:9701/api/all-borrowed", {
+          headers: { Authorization: authToken }
+        });
+
+        const items = await res.json();
+        if (!Array.isArray(items)) {
+           console.error("Nem tömb jött vissza:", items);
+          alert("Nincs jogosultság vagy hiba történt.");
+          return;
+        }
+
+
+        let html = "<h2>Összes kölcsönzés</h2>";
+
+        if (items.length === 0) {
+          html += "<p>Nincs aktív kölcsönzés.</p>";
+        } else {
+        
+          items.forEach(i => {
+            html += `
+              <div class="item borrowed-item" id="item-${i.id}">
+                <strong>${i.nev}</strong><br>
+                👤 Kölcsönző: <b>${i.kolcsonzo}</b><br>
+                📅 Dátum: ${new Date(i.datum).toLocaleString()}<br>
+                📦 Raktáron maradt: ${i.maradek}
+                <br><br>
+                <button onclick="returnItem(${i.id})">
+                  Visszahozás
+                </button>
+              </div>
+            `;
+          });
+        
+        }
+
+        document.querySelector("table").style.display = "none";
+        document.getElementById("borrowedView").style.display = "block";
+        document.getElementById("borrowedView").innerHTML = html;
+      }
+
+      async function returnItem(id) {
+
+        if (!confirm("Biztos visszahozod ezt a tételt?")) return;
+              
+        const element = document.getElementById(`item-${id}`);
+              
+        await fetch(`http://sexard3-214.tolna.net:9701/api/items/${id}/return`, {
+          method: "PUT",
+          headers: {
+            Authorization: authToken
+          }
+        });
+        
+        // Zöld felvillanás
+        element.classList.add("return-success");
+        
+        // 600ms után eltűnik
+        setTimeout(() => {
+          element.classList.add("fade-out");
+        }, 600);
+        
+        // 1.2s után frissít
+        setTimeout(() => {
+          loadAllBorrowed();
+        }, 1200);
+      }
+
+
+
+      /* ================== STATISZTIKA ================== */
+      
+      function updateStats(){
+        const total = items.length;
+        const sum = items.reduce((acc,i)=>acc+i.mennyiseg,0);
+        stats.innerHTML = `Tételek száma: ${total} | Összes mennyiség: ${sum}`;
+      }
+      
+      
+      /* ================== JOGOSULTSÁG ================== */
+      
+      function applyPermissions() {
+        if (!currentUser) return;
+      
+        if (currentUser.role === "user") {
+          document.querySelectorAll("button").forEach(btn => {
+            if (btn.textContent === "Selejt" || btn.textContent === "Szerkeszt") {
+              btn.disabled = true;
+            }
+          });
+        }
+      }
+      
+      
+      /* ================== ÚJ TÉTEL MODAL ================== */
+      
+      function openAddModal() {
+        newName.value = "";
+        newCategory.value = "";
+        newQty.value = 1;
+        addModal.style.display = "flex";
+      }
+      
+      function closeAddModal() {
+        addModal.style.display = "none";
+      }
+      
+      addModal.addEventListener("click", function(e){
+        if(e.target === addModal){
+          closeAddModal();
+        }
+      });
+      
+      document.addEventListener("keydown", function(e) {
+        if (e.key === "Escape" && addModal.style.display === "flex") {
+          closeAddModal();
+        }
+      });
+      
+      
+      async function createItem() {
+        const data = {
+          nev: newName.value.trim(),
+          kategoria: newCategory.value.trim(),
+          mennyiseg: Number(newQty.value)
+        };
+      
+        if (!data.nev || !data.mennyiseg) {
+          alert("Név és mennyiség kötelező!");
+          return;
+        }
+      
+        await fetch("http://sexard3-214.tolna.net:9701/api/items", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": authToken
+          },
+          body: JSON.stringify(data)
+        });
+      
+        closeAddModal();
+        loadItems();
+      }
+      
+      
+      /* ================== SZERKESZTÉS ================== */
+      
+      function openEdit(id){
+
+        const it = items.find(x => x.id === id);
+        if (!it) return;
+              
+        editingId = id;
+              
+        editName.value = it.nev;
+        editQty.value = it.mennyiseg;
+              
+        //  Görgetés a szerkesztő panelhez
+        const panel = document.getElementById("editPanel");
+        panel.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+
+        //  Kiemelés
+        panel.style.boxShadow = "0 0 15px #4CAF50";
+
+        setTimeout(() => {
+        panel.style.boxShadow = "";
+        }, 1000);
+
+
+        
+        // fókusz a név mezőre
+        editName.focus();
+        }
+      
+      async function saveEdit() {
+      
+        if (!editingId) {
+          alert("Nincs kiválasztott tétel!");
+          return;
+        }
+
+        const nev = editName.value.trim();
+        const mennyiseg = Number(editQty.value);
+
+        if (!nev || !mennyiseg) {
+          alert("Név és mennyiség kötelező!");
+          return;
+        }
+      
+        const res = await fetch(`http://sexard3-214.tolna.net:9701/api/items/${editingId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": authToken
+          },
+          body: JSON.stringify({
+            nev: nev,
+            mennyiseg: mennyiseg
+          })
+        });
+      
+        if (!res.ok) {
+          alert("Hiba történt vagy nincs jogosultság!");
+          return;
+        }
+      
+        editingId = null;
+
+        startNewItem();
+        loadItems();
+
+      }
+      
+      
+      /* ================== TÖRLÉS ================== */
+      
+      async function deleteItem(id){
+        await fetch(`http://sexard3-214.tolna.net:9701/api/items/${id}`,{
+          method:'DELETE',
+          headers: {
+            "Authorization": authToken
+          }
+        });
+      
+        loadItems();
+      }
+      
+      
+      /* ================== KERESÉS ================== */
+      
+      function applyFilter(){
+        const term = q.value.toLowerCase();
+        const filtered = items.filter(i =>
+          i.nev.toLowerCase().includes(term)
+        );
+        renderResults(filtered);
+      }
+      
+      
+      /* ================== RENDEZÉS ================== */
+      
+      function sortByQty(){
+        const sorted = [...items].sort((a,b)=>a.mennyiseg-b.mennyiseg);
+        renderResults(sorted);
+      }
+      
+      
+      /* ================== CSV ================== */
+      
+      function exportToCSV(list){
+        if(!list.length){
+          alert("Nincs exportálható adat");
+          return;
+        }
+      
+        const header = ["Név","Leltári szám","Gyári szám","Hely","Kategória","Mennyiség"];
+      
+        const rows = list.map(i => [
+          i.nev,
+          i.leltari || "",
+          i.gyari || "",
+          i.hely || "",
+          i.kategoria || "",
+          i.mennyiseg
+        ]);
+      
+        const csv =
+          [header, ...rows]
+            .map(r => r.map(v => `"${v}"`).join(";"))
+            .join("\n");
+      
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+      
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "leltar.csv";
+        a.click();
+      
+        URL.revokeObjectURL(url);
+      }
+      
+      
+      /* ================== ESEMÉNYEK ================== */
+      
+      searchBtn.onclick = applyFilter;
+      saveItemBtn.onclick = saveEdit;
+      exportCsvBtn.onclick = () => exportToCSV(items);
+      addItemBtn.onclick = openAddModal;
+      cancelModalBtn.onclick = closeAddModal;
+      createItemBtn.onclick = createItem;
+      logoutBtn.onclick = logout;
+      loadItems();
+      
+      </script>
+
+</body>
+</html>
